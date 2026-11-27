@@ -33,15 +33,16 @@ class RemoteController(private val factory: (DiscoveredDevice) -> TvClient) {
             val created = factory(device).also { next = it }
             val credentials = created.connect(saved, pairing)
             client = created
+            val actual = created.resolved ?: device
             created.onClosed = {
                 if (client === created) {
                     client = null
                     // Free sockets and the Bluetooth HID registration so a retry can succeed.
                     created.disconnect()
-                    mutable.value = ConnectionState(ConnectionStatus.DISCONNECTED, device, lost = true)
+                    mutable.value = ConnectionState(ConnectionStatus.DISCONNECTED, actual, lost = true)
                 }
             }
-            mutable.value = ConnectionState(ConnectionStatus.CONNECTED, device)
+            mutable.value = ConnectionState(ConnectionStatus.CONNECTED, actual)
             credentials
         } catch (e: CancellationException) {
             next?.disconnect()

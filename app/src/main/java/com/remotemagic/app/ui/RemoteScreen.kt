@@ -6,7 +6,9 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -62,17 +64,19 @@ private fun appIcon(app: TvApp): Pair<ImageVector, Color> = when (app) {
 }
 
 /** Card button with an icon and a one-line label that never gets cut mid-word. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Tile(
     icon: ImageVector,
     label: String,
     modifier: Modifier,
     tint: Color = MaterialTheme.colorScheme.secondary,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Column(
         modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 10.dp),
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 4.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -208,10 +212,11 @@ fun RemoteScreen(
                     click()
                     if (!openScreenMirroring(context)) model.message.value = R.string.no_mirroring
                 }
-                Tile(Icons.Filled.Mic, stringResource(R.string.voice_short), Modifier.weight(1f)) {
-                    click(); microphone.launch(Manifest.permission.RECORD_AUDIO)
-                }
-                Tile(Icons.Filled.Mouse, stringResource(R.string.air_mouse), Modifier.weight(1f)) { click(); onMouse() }
+                // One button: tap for a voice command, hold to turn the phone into an air mouse.
+                Tile(
+                    Icons.Filled.Mic, stringResource(R.string.voice_mouse), Modifier.weight(1f),
+                    onLongClick = { click(); onMouse() }
+                ) { click(); microphone.launch(Manifest.permission.RECORD_AUDIO) }
                 Tile(Icons.Filled.Keyboard, stringResource(R.string.keyboard), Modifier.weight(1f)) { click(); onKeyboard() }
             }
             RemoteSection.VOLUME -> CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {

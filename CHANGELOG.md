@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1
+- Bluetooth: new "Show phone to the TV" button so the TV can find and pair with the phone (before, the TV could not see it).
+- Air mouse moved into the voice button: tap for voice, hold for mouse.
+
 ## 1.1.0
 
 ### Fixed

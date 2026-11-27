@@ -4,6 +4,9 @@ import com.remotemagic.app.domain.TextResult
 import com.remotemagic.app.protocols.PointerInput
 import com.remotemagic.app.protocols.TextInput
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import com.remotemagic.app.domain.DiscoveredDevice
+import com.remotemagic.app.domain.Protocol
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
 import android.bluetooth.BluetoothHidDeviceAppSdpSettings
@@ -22,7 +25,10 @@ import kotlinx.coroutines.withTimeout
 import java.io.IOException
 import java.util.concurrent.Executors
 
-/** The phone acts as a Bluetooth keyboard / media remote (HID Device profile, Android 9+). */
+/**
+ * The phone acts as a Bluetooth keyboard / media remote (HID Device profile, Android 9+).
+ * A blank [address] means: wait for the TV to find and pair with this phone.
+ */
 @RequiresApi(Build.VERSION_CODES.P)
 @SuppressLint("MissingPermission") // permissions are requested by the connect screen
 class BluetoothHidClient(private val context: Context, private val address: String) : TvClient {
@@ -30,13 +36,16 @@ class BluetoothHidClient(private val context: Context, private val address: Stri
     private var target: BluetoothDevice? = null
     private val executor = Executors.newSingleThreadExecutor()
     override var onClosed: (() -> Unit)? = null
+    override var resolved: DiscoveredDevice? = null
+        private set
     override val supportedKeys get() = HidReports.keys
 
     override suspend fun connect(saved: Credentials, pairing: PairingUi): Credentials {
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
             ?: throw IOException("This phone has no Bluetooth")
         if (!adapter.isEnabled) throw IOException("Turn Bluetooth on first")
-        val device = adapter.getRemoteDevice(address)
+        val device = if (address.isEmpty()) null else adapter.getRemoteDevice(address)
+        val alreadyBonded = adapter.bondedDevices.orEmpty().map { it.address }.toSet()
         val proxy = CompletableDeferred<BluetoothHidDevice>()
         val listening = adapter.getProfileProxy(context, object : BluetoothProfile.ServiceListener {
             override fun onServiceConnected(profile: Int, service: BluetoothProfile) {
@@ -61,15 +70,25 @@ class BluetoothHidClient(private val context: Context, private val address: Stri
                     registered.complete(isRegistered)
                 }
                 override fun onConnectionStateChanged(changed: BluetoothDevice, state: Int) {
-                    if (changed.address != address) return
-                    if (state == BluetoothProfile.STATE_CONNECTED) connected.complete(Unit)
+                    val expected = target?.address
+                    if (expected != null && changed.address != expected) return
+                    if (state == BluetoothProfile.STATE_CONNECTED) {
+                        target = changed
+                        connected.complete(Unit)
+                    }
                     if (state == BluetoothProfile.STATE_DISCONNECTED && connected.isCompleted) onClosed?.invoke()
                 }
             }
             if (!service.registerApp(sdp, null, null, executor, callback) || !withTimeout(5000) { registered.await() }) {
                 throw IOException("Bluetooth HID registration failed on this phone")
             }
-            if (service.getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
+            if (device == null) {
+                awaitHost(adapter, service, alreadyBonded, connected)
+                val host = target ?: throw IOException("No TV connected")
+                resolved = DiscoveredDevice(
+                    host.name ?: host.address, Protocol.BLUETOOTH_HID, host.address, paired = true
+                )
+            } else if (service.getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
                 pairing.showPromptOnTv()
                 // Real pairing first; Android shows the PIN / confirmation dialog itself.
                 if (device.bondState != BluetoothDevice.BOND_BONDED) bond(device)
@@ -80,6 +99,29 @@ class BluetoothHidClient(private val context: Context, private val address: Stri
         } catch (e: Exception) {
             disconnect()
             throw IOException(e.message ?: "Bluetooth connection failed", e)
+        }
+    }
+
+    /** Waits until a TV connects; a TV that only pairs gets the HID link opened from our side. */
+    private suspend fun awaitHost(
+        adapter: BluetoothAdapter,
+        service: BluetoothHidDevice,
+        alreadyBonded: Set<String>,
+        connected: CompletableDeferred<Unit>
+    ) = withTimeout(120_000) {
+        val tried = HashSet<String>()
+        while (!connected.isCompleted) {
+            adapter.bondedDevices.orEmpty()
+                .firstOrNull { it.address !in alreadyBonded && it.address !in tried }
+                ?.let {
+                    delay(1_500) // give the TV the chance to open the link itself
+                    tried.add(it.address)
+                    if (!connected.isCompleted) {
+                        target = it
+                        service.connect(it)
+                    }
+                }
+            delay(500)
         }
     }
 

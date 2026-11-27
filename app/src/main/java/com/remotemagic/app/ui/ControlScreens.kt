@@ -42,7 +42,8 @@ fun MouseScreen(
     val context = LocalContext.current
     val mapper = remember { MotionMapper() }
     val sensor = remember { AirMouseSensor(context, mapper) { x, y -> model.move(x, y) } }
-    var on by remember { mutableStateOf(false) }
+    // Opening this screen means the user asked for the mouse, so it starts switched on.
+    var on by remember { mutableStateOf(true) }
     mapper.speed = settings.mouseSpeed
     // Reading the state makes this screen refresh when the connection changes.
     val available = connection.status.let { model.canPoint }
@@ -59,7 +60,7 @@ fun MouseScreen(
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("MAGIC AIR MOUSE", Modifier.weight(1f), color = MaterialTheme.colorScheme.secondary)
-            Switch(on, { on = it }, enabled = sensor.available)
+            Switch(on && sensor.available, { on = it }, enabled = sensor.available)
         }
         if (!sensor.available) Text(stringResource(R.string.no_gyroscope), color = MaterialTheme.colorScheme.error)
         if (sensor.available) {

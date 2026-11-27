@@ -20,7 +20,7 @@
     <string name="stop">Arrêter</string>
     <string name="no_results">Aucun appareil trouvé. Allumez la TV puis lancez la recherche.</string>
     <string name="wifi_hint">Le téléphone et la TV doivent être sur le même réseau Wi-Fi.</string>
-    <string name="bt_hint">Mettez la TV en mode d’ajout d’accessoire, puis associez. Android 9+ requis.</string>
+    <string name="bt_hint">Touchez « Rendre le téléphone visible », puis sur la TV « Ajouter un accessoire » et choisissez ce téléphone. Android 9+ requis.</string>
     <string name="bt_enable">Activer le Bluetooth</string>
     <string name="permission_denied">Autorisation refusée</string>
     <string name="ip_address">Adresse IP de la TV</string>
@@ -127,4 +127,6 @@
     <string name="hide_numbers">Masquer le pavé numérique</string>
     <string name="section_tools">Partage, voix, souris, clavier</string>
     <string name="section_volume">Volume, chaînes, menu</string>
+    <string name="bt_visible">Rendre le téléphone visible</string>
+    <string name="voice_mouse">Voix · maintenir : souris</string>
 </resources>

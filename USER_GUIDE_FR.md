@@ -6,6 +6,12 @@
 3. Choisissez l’onglet **Wi-Fi** ou **Bluetooth**, puis **Rechercher la TV**.
 4. Touchez votre TV, acceptez la demande ou saisissez le code, puis revenez à « Télécommande ».
 
+## Bluetooth (méthode conseillée)
+Supprimez un ancien appairage, puis : Recherche → Bluetooth → « Rendre le téléphone visible ». Sur la TV : « Ajouter un accessoire » et choisissez le téléphone.
+
+## Souris
+**Maintenez** le bouton « Voix » pour passer en souris ; un appui court lance la commande vocale.
+
 ## 1. Introduction
 Transforme un téléphone Android 8+ en télécommande. Les protocoles n’ont pas encore été vérifiés sur une TV réelle : signalez tout problème.
 

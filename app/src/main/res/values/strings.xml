@@ -21,7 +21,7 @@
     <string name="stop">Stop</string>
     <string name="no_results">No device found yet. Press search with the TV switched on.</string>
     <string name="wifi_hint">The phone and the TV must be on the same Wi-Fi network.</string>
-    <string name="bt_hint">Make the TV visible (Remotes and accessories), then pair. Android 9+ required.</string>
+    <string name="bt_hint">Tap “Show phone to the TV”, then on the TV choose “Add accessory” and select this phone. Android 9+ required.</string>
     <string name="bt_enable">Turn on Bluetooth</string>
     <string name="permission_denied">Permission denied</string>
     <string name="ip_address">TV IP address</string>
@@ -128,4 +128,6 @@
     <string name="hide_numbers">Hide number pad</string>
     <string name="section_tools">Share, voice, mouse, keyboard</string>
     <string name="section_volume">Volume, channels, menu</string>
+    <string name="bt_visible">Show phone to the TV</string>
+    <string name="voice_mouse">Voice · hold: mouse</string>
 </resources>

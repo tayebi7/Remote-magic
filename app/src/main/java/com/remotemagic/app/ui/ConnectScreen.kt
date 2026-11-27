@@ -1,6 +1,9 @@
 package com.remotemagic.app.ui
 
 import android.Manifest
+import android.app.Activity
+import com.remotemagic.app.domain.DiscoveredDevice
+import com.remotemagic.app.domain.Protocol
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.os.Build
@@ -46,6 +49,23 @@ fun ConnectScreen(model: ConnectionViewModel, initialTab: Int) {
         }
         Unit
     }
+    // Lets the TV's "add accessory" screen find this phone.
+    val visible = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_CANCELED) {
+            model.connect(DiscoveredDevice("Bluetooth TV", Protocol.BLUETOOTH_HID, ""))
+        }
+    }
+    val advertise = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.any { !it }) {
+            model.message.value = R.string.permission_denied
+        } else {
+            visible.launch(
+                Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+                    .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120)
+            )
+        }
+        Unit
+    }
     DisposableEffect(Unit) { onDispose { model.stopScan() } }
 
     Column(Modifier.fillMaxSize()) {
@@ -66,6 +86,19 @@ fun ConnectScreen(model: ConnectionViewModel, initialTab: Int) {
                 )
             } else {
                 Text(stringResource(if (tab == 0) R.string.wifi_hint else R.string.bt_hint))
+            }
+            if (tab == 1) {
+                Button(
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    onClick = {
+                        model.stopScan()
+                        advertise.launch(
+                            if (Build.VERSION.SDK_INT >= 31)
+                                arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT)
+                            else emptyArray()
+                        )
+                    }
+                ) { Text(stringResource(R.string.bt_visible)) }
             }
             Button(
                 modifier = Modifier.fillMaxWidth().height(56.dp),

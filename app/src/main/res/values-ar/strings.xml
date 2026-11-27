@@ -20,7 +20,7 @@
     <string name="stop">إيقاف</string>
     <string name="no_results">لم يُعثر على جهاز بعد. شغّل التلفاز ثم اضغط زر البحث.</string>
     <string name="wifi_hint">يجب أن يكون الهاتف والتلفاز على نفس شبكة الواي فاي.</string>
-    <string name="bt_hint">ضع التلفاز في وضع إضافة ملحق بلوتوث ثم ابحث وأقرن. يتطلب أندرويد 9 أو أحدث.</string>
+    <string name="bt_hint">اضغط «اجعل الهاتف مرئياً للتلفاز»، ثم في التلفاز اختر «إضافة ملحق» واختر هاتفك. يتطلب أندرويد 9 أو أحدث.</string>
     <string name="bt_enable">تشغيل البلوتوث</string>
     <string name="permission_denied">لم تُمنح الصلاحية</string>
     <string name="ip_address">عنوان IP للتلفاز</string>
@@ -127,4 +127,6 @@
     <string name="hide_numbers">إخفاء لوحة الأرقام</string>
     <string name="section_tools">المشاركة والصوت والفأرة والكتابة</string>
     <string name="section_volume">الصوت والقنوات والقائمة</string>
+    <string name="bt_visible">اجعل الهاتف مرئياً للتلفاز</string>
+    <string name="voice_mouse">الصوت · مطولاً: فأرة</string>
 </resources>

@@ -1,5 +1,7 @@
 package com.remotemagic.app.protocols
 
+import com.remotemagic.app.domain.DiscoveredDevice
+
 import com.remotemagic.app.domain.PowerState
 import com.remotemagic.app.domain.RemoteKey
 import com.remotemagic.app.domain.TextResult
@@ -45,6 +47,8 @@ interface TvClient {
     val supportsCustomLaunch: Boolean get() = false
     val supportsScreenshot: Boolean get() = false
     var onClosed: (() -> Unit)?
+    /** The device actually connected, when it was unknown before connecting (a TV that found the phone). */
+    val resolved: DiscoveredDevice? get() = null
 
     /** Throws on failure. Returns the credentials to remember. */
     suspend fun connect(saved: Credentials, pairing: PairingUi): Credentials

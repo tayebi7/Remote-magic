@@ -152,6 +152,8 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
             pairing.value = null
         }
         val now = System.currentTimeMillis()
+        // A TV that found the phone is only known after connecting.
+        val target = connection.value.device?.takeIf { result != null } ?: device
         dao.addHistory(
             HistoryEntry(
                 name = device.name, protocol = device.protocol.label, time = now,
@@ -161,8 +163,8 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
         if (result != null) {
             dao.save(
                 SavedDevice(
-                    device.id, old?.name ?: device.name, device.protocol.name, device.address,
-                    device.manufacturer.ifEmpty { old?.manufacturer.orEmpty() }, result.mac,
+                    target.id, old?.name ?: target.name, target.protocol.name, target.address,
+                    target.manufacturer.ifEmpty { old?.manufacturer.orEmpty() }, result.mac,
                     KeystoreCrypto.encrypt(result.token), result.certPin, old?.favorite ?: false, now
                 )
             )

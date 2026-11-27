@@ -15,8 +15,8 @@ android {
         applicationId = "com.remotemagic.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
     }
     signingConfigs {
         if (releaseStore != null) create("release") {
