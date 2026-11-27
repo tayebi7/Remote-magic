@@ -36,6 +36,8 @@ class RemoteController(private val factory: (DiscoveredDevice) -> TvClient) {
             created.onClosed = {
                 if (client === created) {
                     client = null
+                    // Free sockets and the Bluetooth HID registration so a retry can succeed.
+                    created.disconnect()
                     mutable.value = ConnectionState(ConnectionStatus.DISCONNECTED, device, lost = true)
                 }
             }
