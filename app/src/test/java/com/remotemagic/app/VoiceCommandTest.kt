@@ -13,7 +13,8 @@ class VoiceCommandTest {
 
     @Test fun arabic() {
         assertEquals(VoiceCommand.Open(TvApp.YOUTUBE), parse("افتح YouTube"))
-        assertEquals(VoiceCommand.Open(TvApp.NETFLIX), parse("افتح نتفليكس"))
+        assertEquals(VoiceCommand.Open(TvApp.RADIO), parse("افتح الراديو"))
+        assertEquals(VoiceCommand.Open(TvApp.IPTV), parse("open IPTV"))
         assertEquals(key(RemoteKey.VOLUME_UP), parse("ارفع الصوت"))
         assertEquals(key(RemoteKey.VOLUME_DOWN), parse("اخفض الصوت"))
         assertEquals(key(RemoteKey.MUTE), parse("أغلق الصوت"))

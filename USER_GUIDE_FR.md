@@ -21,33 +21,23 @@ Le menu ☰ ouvre toutes les pages. « Accueil » affiche nom, fabricant, IP, ty
 - Roku : direct (activez le contrôle réseau si les commandes sont refusées).
 
 ## 5. Connexion Bluetooth
-Android 9+ avec profil HID. Sur la TV : ajouter un accessoire. Dans l’application : onglet Bluetooth → Rechercher → autoriser → choisir la TV. Pas de lancement d’applications ni de réveil par Bluetooth.
+Android 9+ avec profil HID. Sur la TV : ajouter un accessoire. Dans l’application : onglet Bluetooth → Rechercher → autoriser → choisir la TV. Pas de lancement d’applications. La touche Marche tente un réveil Bluetooth, possible seulement si la TV garde le Bluetooth actif en veille.
 
 ## 6. Ajouter une TV
 Utilisez l’onglet **IP manuelle** si la recherche échoue. Les TV connectées sont enregistrées (favori ⭐, adresse MAC, suppression).
 
 ## 7. Les touches
-| Touche | Fonction |
-|---|---|
-| Recherche / Connecté | écran de connexion |
-| Rouge | marche/arrêt (ou réveil si non connecté) |
-| Maison / Flèche | accueil / retour |
-| ☰ / Engrenage | menu / réglages |
-| Entrée / ✕ | source / quitter |
-| Flèches, OK | navigation |
-| + / − / Muet | volume |
-| CH+ / CH− | chaînes |
-| 0–9 | chiffres |
-| ⏪ ▶ ⏩ | retour, lecture/pause, avance |
-| Micro | commande vocale |
+Haut : Retour, Accueil, Marche. Puis croix directionnelle et OK ; Partage écran (recopie d’écran Android, en Wi-Fi), Voix, Souris, Clavier ; volume, chaînes, menu, réglages, source, quitter ; médias (dont Stop) ; pavé numérique masquable avec * # Enter. Une touche grisée n’est pas prise en charge. « Return » = Retour.
 
-Une touche **grisée** n’est pas prise en charge. Retirés du modèle : « Return » (doublon de Retour), le second bouton lecture et le libellé « CH ».
+**Souris** : Bluetooth HID, LG et Samsung seulement. Calibrez en tenant le téléphone immobile. Pavé tactile : glisser, toucher, double toucher, appui long (Bluetooth). Défilement : Bluetooth et LG.
+
+**Clavier** : sélectionnez un champ sur la TV, tapez puis envoyez. En Bluetooth, caractères anglais (US) uniquement. Seul LG confirme la réception.
 
 ## 8. Commandes vocales
 Exemples : « ouvre YouTube », « monte le son », « baisse le son », « coupe le son », « chaîne suivante », « accueil », « paramètres », « allume la TV », « éteins la TV ». Le service vocal du téléphone peut envoyer l’audio à son fournisseur.
 
-## 9. YouTube et applications
-L’application doit être installée sur la TV. Pour IPTV, Movies et Music, créez dans « Applications » un raccourci du même nom avec l’ID (ou un lien pour Android TV).
+## 9. Les trois raccourcis
+YouTube, IPTV, Radio. Pour IPTV et Radio, saisissez l’ID de l’application dans « Applications » (un lien sur Android TV). Android TV ne confirme pas l’installation ; le Bluetooth ne lance pas d’applications.
 
 ## 10. Réveil depuis la veille
 Activez **Wake on LAN** sur la TV. L’adresse MAC est nécessaire (souvent automatique pour Samsung et Roku, sinon « Appareils enregistrés » → ✏️). **Une TV débranchée ou sans fonction de réveil ne peut pas être allumée.**

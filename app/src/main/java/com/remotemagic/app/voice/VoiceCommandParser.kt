@@ -22,10 +22,8 @@ object VoiceCommandParser {
     // Order matters: more specific phrases come first.
     private val rules: List<Pair<VoiceCommand, List<String>>> = listOf(
         VoiceCommand.Open(TvApp.YOUTUBE) to listOf("youtube", "you tube", "يوتيوب"),
-        VoiceCommand.Open(TvApp.NETFLIX) to listOf("netflix", "نتفليكس", "نتفلكس"),
-        VoiceCommand.Open(TvApp.PRIME) to listOf("prime", "برايم"),
-        VoiceCommand.Open(TvApp.DISNEY) to listOf("disney", "ديزني"),
-        VoiceCommand.Open(TvApp.BROWSER) to listOf("browser", "navigateur", "المتصفح"),
+        VoiceCommand.Open(TvApp.IPTV) to listOf("iptv", "اي بي تي في"),
+        VoiceCommand.Open(TvApp.RADIO) to listOf("radio", "الراديو", "راديو"),
         VoiceCommand.Key(RemoteKey.CHANNEL_UP) to listOf("next channel", "channel up", "chaine suivante", "القناه التاليه", "القناه الموالية", "القناه المواليه"),
         VoiceCommand.Key(RemoteKey.CHANNEL_DOWN) to listOf("previous channel", "channel down", "chaine precedente", "القناه السابقه"),
         VoiceCommand.Key(RemoteKey.MUTE) to listOf("mute", "silence", "coupe le son", "اغلق الصوت", "اكتم", "كتم الصوت"),

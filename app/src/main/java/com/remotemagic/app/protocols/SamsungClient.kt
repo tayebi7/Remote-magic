@@ -1,5 +1,7 @@
 package com.remotemagic.app.protocols
 
+import com.remotemagic.app.domain.PowerState
+import com.remotemagic.app.domain.TextResult
 import com.remotemagic.app.domain.RemoteKey
 import com.remotemagic.app.domain.TvApp
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +51,30 @@ class SamsungClient(private val host: String, private val appName: String = "REM
         }
     }
 
+    override val pointer = object : PointerInput {
+        override val canScroll = false
+        override val canLongPress = false
+        override suspend fun move(dx: Int, dy: Int) = socket?.send(moveMessage(dx, dy)) == true
+        override suspend fun click() = socket?.send(mouseClickMessage()) == true
+    }
+
+    // The TV sends no acknowledgement for text, so success is never claimed as confirmed.
+    override val textInput = object : TextInput {
+        override suspend fun type(text: String) =
+            if (socket?.send(textMessage(text)) == true) TextResult.SENT else TextResult.FAILED
+        override suspend fun backspace() = false
+        override suspend fun enter() = send(RemoteKey.ENTER)
+    }
+
+    override suspend fun powerState(): PowerState? = withContext(Dispatchers.IO) {
+        val state = runCatching {
+            tvHttpClient().newCall(Request.Builder().url("http://$host:8001/api/v2/").build()).execute().use {
+                JSONObject(it.body!!.string()).getJSONObject("device").optString("PowerState")
+            }
+        }.getOrDefault("")
+        when (state) { "on" -> PowerState.ON; "standby" -> PowerState.STANDBY; else -> null }
+    }
+
     private fun readMac(): String = runCatching {
         tvHttpClient().newCall(Request.Builder().url("http://$host:8001/api/v2/").build()).execute().use {
             JSONObject(it.body!!.string()).getJSONObject("device").optString("wifiMac")
@@ -84,13 +110,26 @@ class SamsungClient(private val host: String, private val appName: String = "REM
             RemoteKey.VOLUME_UP to "KEY_VOLUP", RemoteKey.VOLUME_DOWN to "KEY_VOLDOWN",
             RemoteKey.MUTE to "KEY_MUTE", RemoteKey.CHANNEL_UP to "KEY_CHUP",
             RemoteKey.CHANNEL_DOWN to "KEY_CHDOWN", RemoteKey.PLAY_PAUSE to "KEY_PLAY_BACK",
-            RemoteKey.REWIND to "KEY_REWIND", RemoteKey.FAST_FORWARD to "KEY_FF"
+            RemoteKey.REWIND to "KEY_REWIND", RemoteKey.FAST_FORWARD to "KEY_FF",
+            RemoteKey.STOP to "KEY_STOP", RemoteKey.ENTER to "KEY_ENTER"
         ) + (0..9).associate { RemoteKey.digit(it) to "KEY_$it" }
 
-        private val APPS = mapOf(
-            TvApp.YOUTUBE to "111299001912", TvApp.NETFLIX to "3201907018807",
-            TvApp.PRIME to "3201910019365", TvApp.DISNEY to "3201901017640",
-            TvApp.BROWSER to "org.tizen.browser"
+        private val APPS = mapOf(TvApp.YOUTUBE to "111299001912")
+
+        private fun remote(params: JSONObject) =
+            JSONObject().put("method", "ms.remote.control").put("params", params).toString()
+
+        fun moveMessage(dx: Int, dy: Int): String = remote(
+            JSONObject().put("Cmd", "Move").put("TypeOfRemote", "ProcessMouseDevice")
+                .put("Position", JSONObject().put("x", dx).put("y", dy).put("Time", System.currentTimeMillis().toString()))
+        )
+
+        fun mouseClickMessage(): String =
+            remote(JSONObject().put("Cmd", "LeftClick").put("TypeOfRemote", "ProcessMouseDevice"))
+
+        fun textMessage(text: String): String = remote(
+            JSONObject().put("Cmd", Base64.getEncoder().encodeToString(text.toByteArray()))
+                .put("DataOfCmd", "base64").put("TypeOfRemote", "SendInputString")
         )
 
         fun keyMessage(code: String): String = JSONObject()

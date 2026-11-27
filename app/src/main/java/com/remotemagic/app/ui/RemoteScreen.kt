@@ -1,10 +1,12 @@
 package com.remotemagic.app.ui
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -29,13 +31,17 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.remotemagic.app.R
 import com.remotemagic.app.domain.ConnectionState
 import com.remotemagic.app.domain.ConnectionStatus
+import com.remotemagic.app.domain.PowerState
 import com.remotemagic.app.domain.RemoteKey
 import com.remotemagic.app.domain.TvApp
 import com.remotemagic.app.remote.RemoteViewModel
@@ -43,35 +49,44 @@ import com.remotemagic.app.settings.AppSettings
 import com.remotemagic.app.settings.RemoteSection
 import com.remotemagic.app.utils.Feedback
 
+/** Opens the system screen-mirroring page. Returns false when the phone has none. */
+fun openScreenMirroring(context: Context): Boolean =
+    listOf(Settings.ACTION_CAST_SETTINGS, "android.settings.WIFI_DISPLAY_SETTINGS").any {
+        runCatching { context.startActivity(Intent(it)) }.isSuccess
+    }
+
 private fun appIcon(app: TvApp): Pair<ImageVector, Color> = when (app) {
     TvApp.YOUTUBE -> Icons.Filled.SmartDisplay to Color(0xFFFF4D4D)
-    TvApp.NETFLIX -> Icons.Filled.Theaters to Color(0xFFE5484D)
-    TvApp.PRIME -> Icons.Filled.VideoLibrary to Color(0xFF35B7FF)
-    TvApp.DISNEY -> Icons.Filled.AutoAwesome to Color(0xFF8AA8FF)
-    TvApp.IPTV -> Icons.Filled.LiveTv to Color(0xFF4C8DFF)
-    TvApp.MOVIES -> Icons.Filled.Movie to Color(0xFFFF7A59)
-    TvApp.MUSIC -> Icons.Filled.MusicNote to Color(0xFFFF5C8A)
-    TvApp.BROWSER -> Icons.Filled.Public to Color(0xFF5BC0EB)
+    TvApp.IPTV -> Icons.Filled.LiveTv to Color(0xFF6EA8FF)
+    TvApp.RADIO -> Icons.Filled.Radio to Color(0xFFE7C173)
+}
+
+/** Card button with an icon and a one-line label that never gets cut mid-word. */
+@Composable
+private fun Tile(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier,
+    tint: Color = MaterialTheme.colorScheme.secondary,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier.clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(icon, null, tint = tint, modifier = Modifier.size(26.dp))
+        Text(label, fontSize = 11.sp, lineHeight = 13.sp, maxLines = 2, textAlign = TextAlign.Center, overflow = TextOverflow.Ellipsis)
+    }
 }
 
 @Composable
-fun AppGrid(onOpen: (TvApp) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        TvApp.entries.chunked(4).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { app ->
-                    val (icon, tint) = appIcon(app)
-                    Column(
-                        Modifier.weight(1f).clip(RoundedCornerShape(16.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { onOpen(app) }.padding(vertical = 10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(icon, null, tint = tint, modifier = Modifier.size(32.dp))
-                        Text(app.title, fontSize = 11.sp, maxLines = 1)
-                    }
-                }
-            }
+fun AppRow(onOpen: (TvApp) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TvApp.entries.forEach { app ->
+            val (icon, tint) = appIcon(app)
+            Tile(icon, app.title, Modifier.weight(1f), tint) { onOpen(app) }
         }
     }
 }
@@ -81,13 +96,17 @@ fun RemoteScreen(
     model: RemoteViewModel,
     connection: ConnectionState,
     settings: AppSettings,
-    onSearch: () -> Unit
+    onSearch: () -> Unit,
+    onMouse: () -> Unit,
+    onKeyboard: () -> Unit,
+    onShowNumbers: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val feedback = remember { Feedback(context) }
     DisposableEffect(Unit) { onDispose { feedback.release() } }
     val voice by model.voice.state.collectAsStateWithLifecycle()
-    val language = LocalConfiguration.current.locales[0].toLanguageTag()
+    val configuration = LocalConfiguration.current
+    val language = configuration.locales[0].toLanguageTag()
     val microphone = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             model.listen(language)
@@ -97,11 +116,12 @@ fun RemoteScreen(
         Unit
     }
     val connected = connection.status == ConnectionStatus.CONNECTED
+    val rtl = LocalLayoutDirection.current
 
     fun click() = feedback.press(settings.vibrate, settings.sounds)
 
     @Composable
-    fun Key(key: RemoteKey, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    fun Key(key: RemoteKey, modifier: Modifier, content: @Composable () -> Unit) {
         // Buttons the connected protocol cannot send are dimmed.
         val enabled = !connected || model.supports(key)
         Box(
@@ -111,128 +131,162 @@ fun RemoteScreen(
     }
 
     @Composable
-    fun RoundKey(key: RemoteKey, icon: ImageVector, size: Int = 46) = Key(
-        key, Modifier.size(size.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)
-    ) { Icon(icon, key.name, tint = MaterialTheme.colorScheme.secondary) }
-
-    @Composable
-    fun Pill(top: RemoteKey, topText: String, bottom: RemoteKey, bottomText: String, middle: @Composable () -> Unit) {
-        Column(
-            Modifier.width(64.dp).height(210.dp).border(2.dp, Electric, RoundedCornerShape(32.dp))
-                .clip(RoundedCornerShape(32.dp)).background(MaterialTheme.colorScheme.surface),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Key(top, Modifier.fillMaxWidth().height(70.dp)) { Text(topText, fontSize = 20.sp, color = MaterialTheme.colorScheme.secondary) }
-            middle()
-            Key(bottom, Modifier.fillMaxWidth().height(70.dp)) { Text(bottomText, fontSize = 20.sp, color = MaterialTheme.colorScheme.secondary) }
+    fun CardKey(key: RemoteKey, modifier: Modifier, icon: ImageVector? = null, label: String? = null) {
+        Key(key, modifier.height(52.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            if (icon != null) Icon(icon, key.name, tint = MaterialTheme.colorScheme.secondary)
+            else Text(label.orEmpty(), fontSize = 17.sp, maxLines = 1)
         }
     }
 
-    // A remote control keeps the same physical layout in Arabic.
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                // The search / connection button.
-                AssistChip(
-                    onClick = { click(); onSearch() },
-                    label = {
-                        Text(
-                            if (connected) "● " + stringResource(R.string.connected) + " • " +
-                                (if (connection.device?.protocol?.wifi == true) "Wi-Fi" else "Bluetooth")
-                            else stringResource(R.string.search),
-                            color = if (connected) Color(0xFF4ADE80) else Electric, fontSize = 12.sp
-                        )
-                    },
-                    leadingIcon = { if (!connected) Icon(Icons.Filled.Search, null, tint = Electric) }
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "REMOTE\nMAGIC", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center, lineHeight = 20.sp, fontSize = 20.sp
-                )
-                Spacer(Modifier.weight(1f))
-                Box(
-                    Modifier.size(54.dp).clip(CircleShape).background(Color(0xFF8E1B24))
-                        .clickable { click(); model.power() },
-                    contentAlignment = Alignment.Center
-                ) { Icon(Icons.Filled.PowerSettingsNew, "Power", tint = Color.White) }
-            }
+    @Composable
+    fun Line(content: @Composable RowScope.() -> Unit) =
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), content = content)
 
-            if (voice.listening) {
-                Text(stringResource(R.string.listening), color = Electric)
-                LinearProgressIndicator(progress = { voice.level }, modifier = Modifier.fillMaxWidth())
-            } else if (voice.heard.isNotEmpty()) {
-                Text("“${voice.heard}”", color = Electric)
+    @Composable
+    fun Header() {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            // The search / connection button.
+            AssistChip(
+                onClick = { click(); onSearch() },
+                label = {
+                    Text(
+                        stringResource(if (connected) R.string.connected else R.string.search),
+                        color = if (connected) Color(0xFF4ADE80) else Electric, fontSize = 12.sp, maxLines = 1
+                    )
+                }
+            )
+            Spacer(Modifier.weight(1f))
+            Text("REMOTE MAGIC", color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.Black, fontSize = 20.sp, maxLines = 1)
+        }
+        connection.device?.let { device ->
+            val state = when {
+                connection.power == PowerState.STANDBY -> R.string.standby
+                else -> statusText(connection.status)
             }
+            Text(
+                "${device.name} · ${if (device.protocol.wifi) "Wi-Fi" else "Bluetooth"} · ${stringResource(state)}",
+                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (voice.listening) {
+            Text(stringResource(R.string.listening), color = Electric)
+            LinearProgressIndicator(progress = { voice.level }, modifier = Modifier.fillMaxWidth())
+        }
+    }
 
-            settings.order.forEach { section ->
-                when (section) {
-                    RemoteSection.APPS -> AppGrid { click(); model.open(it) }
-                    RemoteSection.NAVIGATION -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        RoundKey(RemoteKey.HOME, Icons.Filled.Home)
-                        RoundKey(RemoteKey.BACK, Icons.AutoMirrored.Filled.ArrowBack)
-                        RoundKey(RemoteKey.MENU, Icons.Filled.Menu)
-                        RoundKey(RemoteKey.SETTINGS, Icons.Filled.Settings)
-                        RoundKey(RemoteKey.SOURCE, Icons.AutoMirrored.Filled.Input)
-                        RoundKey(RemoteKey.EXIT, Icons.Filled.Close)
+    @Composable
+    fun DPad(size: Dp) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            Box(Modifier.size(size).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                val arrow = size / 3.4f
+                val tint = MaterialTheme.colorScheme.onSurface
+                Key(RemoteKey.UP, Modifier.align(Alignment.TopCenter).size(arrow)) { Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = tint) }
+                Key(RemoteKey.DOWN, Modifier.align(Alignment.BottomCenter).size(arrow)) { Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = tint) }
+                Key(RemoteKey.LEFT, Modifier.align(Alignment.CenterStart).size(arrow)) { Icon(Icons.Filled.KeyboardArrowLeft, "Left", tint = tint) }
+                Key(RemoteKey.RIGHT, Modifier.align(Alignment.CenterEnd).size(arrow)) { Icon(Icons.Filled.KeyboardArrowRight, "Right", tint = tint) }
+                Key(RemoteKey.OK, Modifier.align(Alignment.Center).size(size / 3.2f).clip(CircleShape).background(Gold)) {
+                    Text("OK", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color(0xFF14213D))
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun Section(section: RemoteSection, width: Dp) {
+        when (section) {
+            RemoteSection.TOP -> Line {
+                Tile(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), Modifier.weight(1f)) { click(); model.press(RemoteKey.BACK) }
+                Tile(Icons.Filled.Home, stringResource(R.string.home), Modifier.weight(1f)) { click(); model.press(RemoteKey.HOME) }
+                Tile(Icons.Filled.PowerSettingsNew, stringResource(R.string.power), Modifier.weight(1f)) { click(); model.power() }
+            }
+            RemoteSection.DPAD -> Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                DPad(min(width * 0.68f, 250.dp))
+            }
+            RemoteSection.TOOLS -> Line {
+                Tile(Icons.Filled.ScreenShare, stringResource(R.string.share_screen), Modifier.weight(1f)) {
+                    click()
+                    if (!openScreenMirroring(context)) model.message.value = R.string.no_mirroring
+                }
+                Tile(Icons.Filled.Mic, stringResource(R.string.voice_short), Modifier.weight(1f)) {
+                    click(); microphone.launch(Manifest.permission.RECORD_AUDIO)
+                }
+                Tile(Icons.Filled.Mouse, stringResource(R.string.air_mouse), Modifier.weight(1f)) { click(); onMouse() }
+                Tile(Icons.Filled.Keyboard, stringResource(R.string.keyboard), Modifier.weight(1f)) { click(); onKeyboard() }
+            }
+            RemoteSection.VOLUME -> CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Line {
+                        CardKey(RemoteKey.VOLUME_DOWN, Modifier.weight(1f), Icons.Filled.VolumeDown)
+                        CardKey(RemoteKey.MUTE, Modifier.weight(1f), Icons.Filled.VolumeOff)
+                        CardKey(RemoteKey.VOLUME_UP, Modifier.weight(1f), Icons.Filled.VolumeUp)
                     }
-                    RemoteSection.DPAD -> Row(
-                        Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Pill(RemoteKey.VOLUME_UP, "+", RemoteKey.VOLUME_DOWN, "−") {
-                            Key(RemoteKey.MUTE, Modifier.size(52.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                                Text(stringResource(R.string.mute), fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
-                            }
-                        }
-                        Box(
-                            Modifier.size(200.dp).border(3.dp, Electric, CircleShape).clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            val arrow = MaterialTheme.colorScheme.secondary
-                            Key(RemoteKey.UP, Modifier.align(Alignment.TopCenter).size(64.dp)) { Icon(Icons.Filled.KeyboardArrowUp, "Up", tint = arrow) }
-                            Key(RemoteKey.DOWN, Modifier.align(Alignment.BottomCenter).size(64.dp)) { Icon(Icons.Filled.KeyboardArrowDown, "Down", tint = arrow) }
-                            Key(RemoteKey.LEFT, Modifier.align(Alignment.CenterStart).size(64.dp)) { Icon(Icons.Filled.KeyboardArrowLeft, "Left", tint = arrow) }
-                            Key(RemoteKey.RIGHT, Modifier.align(Alignment.CenterEnd).size(64.dp)) { Icon(Icons.Filled.KeyboardArrowRight, "Right", tint = arrow) }
-                            Key(RemoteKey.OK, Modifier.align(Alignment.Center).size(72.dp).clip(CircleShape).background(Gold)) {
-                                Text("OK", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color(0xFF3A2A00))
-                            }
-                        }
-                        Pill(RemoteKey.CHANNEL_UP, "CH+", RemoteKey.CHANNEL_DOWN, "CH−") {}
+                    Line {
+                        CardKey(RemoteKey.CHANNEL_DOWN, Modifier.weight(1f), label = "CH −")
+                        CardKey(RemoteKey.CHANNEL_UP, Modifier.weight(1f), label = "CH +")
                     }
-                    RemoteSection.NUMBERS -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(listOf(1, 2, 3), listOf(4, 5, 6), listOf(7, 8, 9), listOf(0)).forEach { row ->
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)) {
-                                row.forEach { n ->
-                                    Key(
-                                        RemoteKey.digit(n),
-                                        Modifier.width(100.dp).height(50.dp).border(1.dp, Gold, RoundedCornerShape(12.dp))
-                                            .clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surface)
-                                    ) { Text("$n", fontSize = 24.sp) }
-                                }
-                            }
-                        }
-                    }
-                    RemoteSection.MEDIA -> Row(
-                        Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RoundKey(RemoteKey.REWIND, Icons.Filled.FastRewind, 54)
-                        Box(
-                            Modifier.size(76.dp).border(3.dp, Gold, CircleShape).clip(CircleShape).background(Color(0xFF0B76B7))
-                                .clickable { click(); microphone.launch(Manifest.permission.RECORD_AUDIO) },
-                            contentAlignment = Alignment.Center
-                        ) { Icon(Icons.Filled.Mic, "Microphone", tint = Gold, modifier = Modifier.size(38.dp)) }
-                        RoundKey(RemoteKey.PLAY_PAUSE, Icons.Filled.PlayArrow, 54)
-                        RoundKey(RemoteKey.FAST_FORWARD, Icons.Filled.FastForward, 54)
+                    Line {
+                        CardKey(RemoteKey.MENU, Modifier.weight(1f), Icons.Filled.Menu)
+                        CardKey(RemoteKey.SETTINGS, Modifier.weight(1f), Icons.Filled.Settings)
+                        CardKey(RemoteKey.SOURCE, Modifier.weight(1f), Icons.AutoMirrored.Filled.Input)
+                        CardKey(RemoteKey.EXIT, Modifier.weight(1f), Icons.Filled.Close)
                     }
                 }
             }
+            RemoteSection.MEDIA -> CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                Line {
+                    CardKey(RemoteKey.REWIND, Modifier.weight(1f), Icons.Filled.FastRewind)
+                    CardKey(RemoteKey.PLAY_PAUSE, Modifier.weight(1f), label = "▶ ❚❚")
+                    CardKey(RemoteKey.STOP, Modifier.weight(1f), Icons.Filled.Stop)
+                    CardKey(RemoteKey.FAST_FORWARD, Modifier.weight(1f), Icons.Filled.FastForward)
+                }
+            }
+            RemoteSection.NUMBERS -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onShowNumbers(!settings.showNumbers) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(if (settings.showNumbers) R.string.hide_numbers else R.string.show_numbers))
+                }
+                if (settings.showNumbers) CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(listOf(1, 2, 3), listOf(4, 5, 6), listOf(7, 8, 9)).forEach { row ->
+                            Line { row.forEach { CardKey(RemoteKey.digit(it), Modifier.weight(1f), label = "$it") } }
+                        }
+                        Line {
+                            CardKey(RemoteKey.STAR, Modifier.weight(1f), label = "*")
+                            CardKey(RemoteKey.NUM_0, Modifier.weight(1f), label = "0")
+                            CardKey(RemoteKey.HASH, Modifier.weight(1f), label = "#")
+                        }
+                        Line { CardKey(RemoteKey.ENTER, Modifier.weight(1f), label = "Enter") }
+                    }
+                }
+            }
+            RemoteSection.APPS -> AppRow { click(); model.open(it) }
+        }
+    }
+
+    @Composable
+    fun SectionColumn(sections: List<RemoteSection>, modifier: Modifier, header: Boolean) {
+        BoxWithConstraints(modifier) {
+            val width = maxWidth
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (header) CompositionLocalProvider(LocalLayoutDirection provides rtl) { Header() }
+                sections.forEach { Section(it, width) }
+            }
+        }
+    }
+
+    // Landscape shows two scrollable columns; portrait one, kept narrow enough for one hand.
+    if (configuration.screenWidthDp > configuration.screenHeightDp) {
+        val half = (settings.order.size + 1) / 2
+        Row(Modifier.fillMaxSize()) {
+            SectionColumn(settings.order.take(half), Modifier.weight(1f), true)
+            SectionColumn(settings.order.drop(half), Modifier.weight(1f), false)
+        }
+    } else {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            SectionColumn(settings.order, Modifier.widthIn(max = 480.dp), true)
         }
     }
 }

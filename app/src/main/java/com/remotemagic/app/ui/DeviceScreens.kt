@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.remotemagic.app.R
 import com.remotemagic.app.data.SavedDevice
 import com.remotemagic.app.domain.ConnectionStatus
+import com.remotemagic.app.domain.PowerState
 import com.remotemagic.app.sharing.Sharing
 import com.remotemagic.app.sharing.TvCard
 import com.remotemagic.app.wifi.WakeOnLan
@@ -122,8 +123,28 @@ fun SavedDevicesScreen(model: ConnectionViewModel, favoritesOnly: Boolean) {
                 Column(Modifier.padding(12.dp)) {
                     Text(device.name, style = MaterialTheme.typography.titleMedium)
                     Text("${device.toDiscovered().protocol.label} • ${device.address}")
+                    val live = model.connection.collectAsStateWithLifecycle().value
+                    val mine = live.device?.id == device.id
+                    Text(
+                        stringResource(R.string.paired) + " • " + stringResource(
+                            when {
+                                mine && live.power == PowerState.STANDBY -> R.string.standby
+                                mine -> statusText(live.status)
+                                else -> R.string.disconnected
+                            }
+                        ),
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    if (!device.toDiscovered().protocol.wifi) {
+                        Text(stringResource(R.string.forget_bt_note), style = MaterialTheme.typography.bodySmall)
+                    }
                     Row {
-                        TextButton(onClick = { model.connect(device.toDiscovered()) }) { Text(stringResource(R.string.connect)) }
+                        val current = model.connection.collectAsStateWithLifecycle().value
+                        if (current.device?.id == device.id && current.status == ConnectionStatus.CONNECTED) {
+                            TextButton(onClick = { model.disconnect() }) { Text(stringResource(R.string.disconnect)) }
+                        } else {
+                            TextButton(onClick = { model.connect(device.toDiscovered()) }) { Text(stringResource(R.string.connect)) }
+                        }
                         if (WakeOnLan.parseMac(device.mac) != null) {
                             TextButton(onClick = { model.wake(device) }) { Text(stringResource(R.string.wake)) }
                         }
@@ -132,7 +153,7 @@ fun SavedDevicesScreen(model: ConnectionViewModel, favoritesOnly: Boolean) {
                             Icon(if (device.favorite) Icons.Filled.Star else Icons.Filled.StarBorder, stringResource(R.string.favorite))
                         }
                         IconButton(onClick = { editing = device }) { Icon(Icons.Filled.Edit, stringResource(R.string.edit)) }
-                        IconButton(onClick = { model.delete(device) }) { Icon(Icons.Filled.Delete, stringResource(R.string.delete)) }
+                        IconButton(onClick = { model.delete(device) }) { Icon(Icons.Filled.Delete, stringResource(R.string.forget)) }
                     }
                     if (device.id == model.connection.collectAsStateWithLifecycle().value.device?.id) ConnectionCard(model)
                 }

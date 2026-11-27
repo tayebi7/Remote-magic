@@ -20,7 +20,9 @@ class ConnectionTest {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody("<device-info><wifi-mac>aa:bb:cc:dd:ee:ff</wifi-mac></device-info>"))
             server.enqueue(MockResponse())
+            server.enqueue(MockResponse().setBody("<apps><app id=\"837\">YouTube</app></apps>"))
             server.enqueue(MockResponse())
+            server.enqueue(MockResponse().setBody("<apps/>"))
             server.start()
             val client = RokuClient(server.hostName, server.port)
             assertEquals("aa:bb:cc:dd:ee:ff", client.connect(Credentials(), NoPairing).mac)
@@ -28,7 +30,10 @@ class ConnectionTest {
             assertTrue(client.launch(TvApp.YOUTUBE))
             server.takeRequest()
             assertEquals("/keypress/Home", server.takeRequest().path)
+            assertEquals("/query/apps", server.takeRequest().path)
             assertEquals("/launch/837", server.takeRequest().path)
+            // An app that is not installed must be reported as a failure.
+            assertFalse(client.launchCustom("999"))
         }
     }
 
@@ -71,6 +76,7 @@ class ConnectionTest {
 
         last!!.onClosed!!.invoke() // TV dropped the connection
         assertEquals(ConnectionStatus.DISCONNECTED, controller.state.value.status)
+        assertTrue(controller.state.value.lost)
         assertNotNull(controller.connect(device, Credentials(), NoPairing))
         assertEquals(ConnectionStatus.CONNECTED, controller.state.value.status)
     }

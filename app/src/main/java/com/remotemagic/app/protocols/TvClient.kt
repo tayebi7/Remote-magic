@@ -1,6 +1,8 @@
 package com.remotemagic.app.protocols
 
+import com.remotemagic.app.domain.PowerState
 import com.remotemagic.app.domain.RemoteKey
+import com.remotemagic.app.domain.TextResult
 import com.remotemagic.app.domain.TvApp
 
 /** Interaction needed from the user while pairing. */
@@ -14,7 +16,29 @@ interface PairingUi {
 /** Secrets learned while pairing; persisted (encrypted) for reconnection. */
 data class Credentials(val token: String = "", val certPin: String = "", val mac: String = "")
 
+/** Real pointer on the TV screen. */
+interface PointerInput {
+    val canScroll: Boolean
+    val canLongPress: Boolean
+    suspend fun move(dx: Int, dy: Int): Boolean
+    suspend fun click(): Boolean
+    suspend fun longClick(): Boolean = false
+    /** Positive scrolls up. */
+    suspend fun scroll(steps: Int): Boolean = false
+}
+
+/** Text entry into the field focused on the TV. */
+interface TextInput {
+    suspend fun type(text: String): TextResult
+    suspend fun backspace(): Boolean
+    suspend fun enter(): Boolean
+}
+
 interface TvClient {
+    val pointer: PointerInput? get() = null
+    val textInput: TextInput? get() = null
+    /** Null when the protocol cannot tell. */
+    suspend fun powerState(): PowerState? = null
     val supportedKeys: Set<RemoteKey>
     val supportedApps: Set<TvApp> get() = emptySet()
     /** Whether a free-form app id / deep link can be launched (custom shortcuts). */

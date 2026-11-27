@@ -36,7 +36,7 @@ class RemoteController(private val factory: (DiscoveredDevice) -> TvClient) {
             created.onClosed = {
                 if (client === created) {
                     client = null
-                    mutable.value = ConnectionState(ConnectionStatus.DISCONNECTED, device)
+                    mutable.value = ConnectionState(ConnectionStatus.DISCONNECTED, device, lost = true)
                 }
             }
             mutable.value = ConnectionState(ConnectionStatus.CONNECTED, device)
@@ -65,6 +65,12 @@ class RemoteController(private val factory: (DiscoveredDevice) -> TvClient) {
         val active = client ?: return SendResult.NOT_CONNECTED
         if (!supported) return SendResult.UNSUPPORTED
         return if (action(active)) SendResult.OK else SendResult.FAILED
+    }
+
+    suspend fun refreshPower() {
+        val active = client ?: return
+        val power = runCatching { active.powerState() }.getOrNull()
+        if (client === active) mutable.value = mutable.value.copy(power = power)
     }
 
     fun disconnect() {

@@ -6,6 +6,7 @@ import com.remotemagic.app.domain.RemoteKey
 object HidReports {
     const val KEYBOARD_ID = 1
     const val CONSUMER_ID = 2
+    const val MOUSE_ID = 3
 
     private fun bytes(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
 
@@ -17,26 +18,60 @@ object HidReports {
         0xC0,
         0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01, 0x85, CONSUMER_ID,
         0x15, 0x00, 0x26, 0xFF, 0x03, 0x19, 0x00, 0x2A, 0xFF, 0x03, 0x75, 0x10, 0x95, 0x01, 0x81, 0x00,
-        0xC0
+        0xC0,
+        // Mouse: 3 buttons, relative X, Y and wheel.
+        0x05, 0x01, 0x09, 0x02, 0xA1, 0x01, 0x85, MOUSE_ID, 0x09, 0x01, 0xA1, 0x00,
+        0x05, 0x09, 0x19, 0x01, 0x29, 0x03, 0x15, 0x00, 0x25, 0x01, 0x95, 0x03, 0x75, 0x01, 0x81, 0x02,
+        0x95, 0x01, 0x75, 0x05, 0x81, 0x01,
+        0x05, 0x01, 0x09, 0x30, 0x09, 0x31, 0x09, 0x38, 0x15, 0x81, 0x25, 0x7F, 0x75, 0x08, 0x95, 0x03, 0x81, 0x06,
+        0xC0, 0xC0
     )
 
     private val keyboard: Map<RemoteKey, Int> = mapOf(
         RemoteKey.UP to 0x52, RemoteKey.DOWN to 0x51, RemoteKey.LEFT to 0x50, RemoteKey.RIGHT to 0x4F,
-        RemoteKey.OK to 0x28, RemoteKey.NUM_0 to 0x27
+        RemoteKey.OK to 0x28, RemoteKey.NUM_0 to 0x27, RemoteKey.ENTER to 0x28
     ) + (1..9).associate { RemoteKey.digit(it) to 0x1D + it }
 
     private val consumer: Map<RemoteKey, Int> = mapOf(
         RemoteKey.POWER to 0x30, RemoteKey.HOME to 0x223, RemoteKey.BACK to 0x224, RemoteKey.MENU to 0x40,
         RemoteKey.VOLUME_UP to 0xE9, RemoteKey.VOLUME_DOWN to 0xEA, RemoteKey.MUTE to 0xE2,
         RemoteKey.CHANNEL_UP to 0x9C, RemoteKey.CHANNEL_DOWN to 0x9D, RemoteKey.PLAY_PAUSE to 0xCD,
-        RemoteKey.REWIND to 0xB4, RemoteKey.FAST_FORWARD to 0xB3
+        RemoteKey.REWIND to 0xB4, RemoteKey.FAST_FORWARD to 0xB3, RemoteKey.STOP to 0xB7
     )
 
-    val keys: Set<RemoteKey> = keyboard.keys + consumer.keys
+    private const val SHIFT = 0x02
+    private val shifted: Map<RemoteKey, Int> = mapOf(RemoteKey.STAR to 0x25, RemoteKey.HASH to 0x20)
+
+    val keys: Set<RemoteKey> = keyboard.keys + consumer.keys + shifted.keys
+
+    fun mouse(buttons: Int, dx: Int, dy: Int, wheel: Int): ByteArray =
+        bytes(buttons, dx.coerceIn(-127, 127), dy.coerceIn(-127, 127), wheel.coerceIn(-127, 127))
+
+    fun keyboardReport(usage: Int, shift: Boolean = false): Report {
+        val press = ByteArray(8)
+        if (shift) press[0] = SHIFT.toByte()
+        press[2] = usage.toByte()
+        return Report(KEYBOARD_ID, press, ByteArray(8))
+    }
+
+    /** US-layout key for a character; null when a Bluetooth keyboard cannot express it. */
+    fun character(c: Char): Report? {
+        if (c in 'a'..'z') return keyboardReport(0x04 + (c - 'a'))
+        if (c in 'A'..'Z') return keyboardReport(0x04 + (c - 'A'), true)
+        if (c in '1'..'9') return keyboardReport(0x1E + (c - '1'))
+        val plain = mapOf('0' to 0x27, ' ' to 0x2C, '\n' to 0x28, '-' to 0x2D, '=' to 0x2E, '[' to 0x2F, ']' to 0x30,
+            '\\' to 0x31, ';' to 0x33, '\'' to 0x34, '`' to 0x35, ',' to 0x36, '.' to 0x37, '/' to 0x38)
+        plain[c]?.let { return keyboardReport(it) }
+        val upper = mapOf('!' to 0x1E, '@' to 0x1F, '#' to 0x20, '$' to 0x21, '%' to 0x22, '^' to 0x23, '&' to 0x24,
+            '*' to 0x25, '(' to 0x26, ')' to 0x27, '_' to 0x2D, '+' to 0x2E, '{' to 0x2F, '}' to 0x30, '|' to 0x31,
+            ':' to 0x33, '"' to 0x34, '~' to 0x35, '<' to 0x36, '>' to 0x37, '?' to 0x38)
+        return upper[c]?.let { keyboardReport(it, true) }
+    }
 
     data class Report(val id: Int, val press: ByteArray, val release: ByteArray)
 
     fun report(key: RemoteKey): Report? {
+        shifted[key]?.let { return keyboardReport(it, true) }
         keyboard[key]?.let {
             val press = ByteArray(8).also { data -> data[2] = it.toByte() }
             return Report(KEYBOARD_ID, press, ByteArray(8))

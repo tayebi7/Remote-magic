@@ -18,6 +18,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun setSounds(value: Boolean) = viewModelScope.launch { store.setSounds(value) }
     fun setAutoConnect(value: Boolean) = viewModelScope.launch { store.setAutoConnect(value) }
 
+    fun setMouseSpeed(value: Float) = viewModelScope.launch { store.setMouseSpeed(value) }
+    fun setClearAfterSend(value: Boolean) = viewModelScope.launch { store.setClearAfterSend(value) }
+    fun setShowNumbers(value: Boolean) = viewModelScope.launch { store.setShowNumbers(value) }
+
     fun move(section: RemoteSection, delta: Int) = viewModelScope.launch {
         val order = settings.value.order.toMutableList()
         val from = order.indexOf(section)

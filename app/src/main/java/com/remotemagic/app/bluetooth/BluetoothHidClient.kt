@@ -1,5 +1,8 @@
 package com.remotemagic.app.bluetooth
 
+import com.remotemagic.app.domain.TextResult
+import com.remotemagic.app.protocols.PointerInput
+import com.remotemagic.app.protocols.TextInput
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHidDevice
@@ -68,6 +71,8 @@ class BluetoothHidClient(private val context: Context, private val address: Stri
             }
             if (service.getConnectionState(device) != BluetoothProfile.STATE_CONNECTED) {
                 pairing.showPromptOnTv()
+                // Real pairing first; Android shows the PIN / confirmation dialog itself.
+                if (device.bondState != BluetoothDevice.BOND_BONDED) bond(device)
                 service.connect(device)
                 withTimeout(30_000) { connected.await() }
             }
@@ -78,13 +83,61 @@ class BluetoothHidClient(private val context: Context, private val address: Stri
         }
     }
 
-    override suspend fun send(key: RemoteKey): Boolean {
-        val report = HidReports.report(key) ?: return false
+    private suspend fun bond(device: BluetoothDevice) {
+        if (device.bondState != BluetoothDevice.BOND_BONDING && !device.createBond()) {
+            throw IOException("Pairing could not start. Make the TV visible and try again.")
+        }
+        var sawBonding = false
+        withTimeout(60_000) {
+            while (device.bondState != BluetoothDevice.BOND_BONDED) {
+                if (device.bondState == BluetoothDevice.BOND_BONDING) sawBonding = true
+                else if (sawBonding) throw IOException("Pairing was refused or cancelled")
+                delay(300)
+            }
+        }
+    }
+
+    private fun raw(id: Int, data: ByteArray): Boolean {
         val service = hid ?: return false
         val device = target ?: return false
-        if (!service.sendReport(device, report.id, report.press)) return false
-        delay(30)
-        return service.sendReport(device, report.id, report.release)
+        return service.sendReport(device, id, data)
+    }
+
+    private suspend fun tap(report: HidReports.Report): Boolean {
+        if (!raw(report.id, report.press)) return false
+        delay(20)
+        return raw(report.id, report.release)
+    }
+
+    override suspend fun send(key: RemoteKey) = HidReports.report(key)?.let { tap(it) } ?: false
+
+    override val pointer = object : PointerInput {
+        override val canScroll = true
+        override val canLongPress = true
+        private fun mouse(buttons: Int, dx: Int = 0, dy: Int = 0, wheel: Int = 0) =
+            raw(HidReports.MOUSE_ID, HidReports.mouse(buttons, dx, dy, wheel))
+        private suspend fun press(millis: Long): Boolean {
+            if (!mouse(1)) return false
+            delay(millis)
+            return mouse(0)
+        }
+        override suspend fun move(dx: Int, dy: Int) = mouse(0, dx, dy)
+        override suspend fun click() = press(40)
+        override suspend fun longClick() = press(800)
+        override suspend fun scroll(steps: Int) = mouse(0, wheel = steps)
+    }
+
+    override val textInput = object : TextInput {
+        override suspend fun type(text: String): TextResult {
+            val reports = text.map { HidReports.character(it) ?: return TextResult.BAD_CHARACTERS }
+            for (report in reports) {
+                if (!tap(report)) return TextResult.FAILED
+                delay(10)
+            }
+            return TextResult.SENT
+        }
+        override suspend fun backspace() = tap(HidReports.keyboardReport(0x2A))
+        override suspend fun enter() = tap(HidReports.keyboardReport(0x28))
     }
 
     override fun disconnect() {

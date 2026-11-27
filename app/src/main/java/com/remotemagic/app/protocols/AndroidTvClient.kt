@@ -1,5 +1,7 @@
 package com.remotemagic.app.protocols
 
+import com.remotemagic.app.domain.PowerState
+import com.remotemagic.app.domain.TextResult
 import com.remotemagic.app.domain.RemoteKey
 import com.remotemagic.app.domain.TvApp
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +30,8 @@ class AndroidTvClient(
     private var socket: SSLSocket? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var reader: Job? = null
+    @Volatile private var started: Boolean? = null
+    @Volatile private var ime: Pair<Long, Long>? = null
     override var onClosed: (() -> Unit)? = null
 
     override val supportedKeys get() = KEYS.keys
@@ -90,6 +94,9 @@ class AndroidTvClient(
     }
 
     private fun reply(tls: SSLSocket, message: ProtoMessage) {
+        // remote_start { started } reports whether the TV is on or in standby.
+        message.message(40)?.let { started = it.number(1) == 1L }
+        message.message(21)?.let { ime = it.number(1) to it.number(2) }
         val answer = when {
             message.has(1) -> AndroidTvMessages.configure()
             message.has(2) -> AndroidTvMessages.setActive()
@@ -117,6 +124,19 @@ class AndroidTvClient(
         runCatching { synchronized(tls) { tls.outputStream.writeFrame(data) } }.isSuccess
     }
 
+    override suspend fun powerState(): PowerState? =
+        started?.let { if (it) PowerState.ON else PowerState.STANDBY }
+
+    override val textInput = object : TextInput {
+        override suspend fun type(text: String): TextResult {
+            val counters = ime ?: return TextResult.NO_FIELD
+            return if (write(AndroidTvMessages.imeText(counters.first, counters.second, text))) TextResult.SENT
+            else TextResult.FAILED
+        }
+        override suspend fun backspace() = write(AndroidTvMessages.keyPress(67))
+        override suspend fun enter() = write(AndroidTvMessages.keyPress(66))
+    }
+
     override suspend fun send(key: RemoteKey) = KEYS[key]?.let { write(AndroidTvMessages.keyPress(it)) } ?: false
     override suspend fun launch(app: TvApp) = APPS[app]?.let { launchCustom(it) } ?: false
     override suspend fun launchCustom(target: String) = write(AndroidTvMessages.appLink(target))
@@ -139,12 +159,10 @@ class AndroidTvClient(
             RemoteKey.LEFT to 21, RemoteKey.RIGHT to 22, RemoteKey.OK to 23, RemoteKey.VOLUME_UP to 24,
             RemoteKey.VOLUME_DOWN to 25, RemoteKey.MUTE to 164, RemoteKey.CHANNEL_UP to 166,
             RemoteKey.CHANNEL_DOWN to 167, RemoteKey.PLAY_PAUSE to 85, RemoteKey.REWIND to 89,
-            RemoteKey.FAST_FORWARD to 90
+            RemoteKey.FAST_FORWARD to 90, RemoteKey.STOP to 86, RemoteKey.STAR to 17, RemoteKey.HASH to 18,
+            RemoteKey.ENTER to 66
         ) + (0..9).associate { RemoteKey.digit(it) to 7 + it }
 
-        private val APPS = mapOf(
-            TvApp.YOUTUBE to "https://www.youtube.com", TvApp.NETFLIX to "https://www.netflix.com/title",
-            TvApp.PRIME to "https://app.primevideo.com", TvApp.DISNEY to "https://www.disneyplus.com"
-        )
+        private val APPS = mapOf(TvApp.YOUTUBE to "https://www.youtube.com")
     }
 }

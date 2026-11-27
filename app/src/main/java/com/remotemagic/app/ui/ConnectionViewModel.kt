@@ -1,5 +1,10 @@
 package com.remotemagic.app.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import com.remotemagic.app.domain.ConnectionStatus
+import kotlinx.coroutines.delay
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -48,14 +53,40 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     private var scan: Job? = null
     private var connecting: Job? = null
 
+    private var retry: Job? = null
+
     init {
         viewModelScope.launch {
             if (app.settings.settings.first().autoConnect && connection.value.device == null) {
-                // Bluetooth needs a runtime permission, so only Wi-Fi TVs reconnect automatically.
-                dao.lastDevice()?.toDiscovered()?.takeIf { it.protocol.wifi }?.let { connect(it) }
+                dao.lastDevice()?.toDiscovered()?.takeIf { it.protocol.wifi || bluetoothAllowed() }?.let { connect(it) }
+            }
+        }
+        // Smart retry after an unexpected drop: a few attempts with growing delays.
+        viewModelScope.launch {
+            connection.collect { state ->
+                val device = state.device
+                if (state.lost && device != null && retry?.isActive != true) {
+                    retry = viewModelScope.launch {
+                        if (!app.settings.settings.first().autoConnect) return@launch
+                        for (wait in longArrayOf(2_000, 5_000, 15_000, 30_000)) {
+                            delay(wait)
+                            attempt(device)
+                            if (connection.value.status == ConnectionStatus.CONNECTED) break
+                        }
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
+            while (true) {
+                app.controller.refreshPower()
+                delay(8_000)
             }
         }
     }
+
+    private fun bluetoothAllowed() = Build.VERSION.SDK_INT < 31 ||
+        app.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
 
     private fun add(device: DiscoveredDevice) = found.update { list ->
         if (list.any { it.id == device.id }) list else list + device
@@ -99,39 +130,47 @@ class ConnectionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun connect(device: DiscoveredDevice) {
+        if (!device.supported) {
+            message.value = R.string.ble_unsupported
+            return
+        }
         stopScan()
+        retry?.cancel()
         connecting?.cancel()
-        connecting = viewModelScope.launch {
-            val old = dao.device(device.id)
-            val credentials = Credentials(
-                KeystoreCrypto.decrypt(old?.secret.orEmpty()), old?.certPin.orEmpty(),
-                old?.mac.orEmpty().ifEmpty { device.mac }
+        connecting = viewModelScope.launch { attempt(device) }
+    }
+
+    private suspend fun attempt(device: DiscoveredDevice) {
+        val old = dao.device(device.id)
+        val credentials = Credentials(
+            KeystoreCrypto.decrypt(old?.secret.orEmpty()), old?.certPin.orEmpty(),
+            old?.mac.orEmpty().ifEmpty { device.mac }
+        )
+        val result = try {
+            app.controller.connect(device, credentials, this@ConnectionViewModel)
+        } finally {
+            pairing.value = null
+        }
+        val now = System.currentTimeMillis()
+        dao.addHistory(
+            HistoryEntry(
+                name = device.name, protocol = device.protocol.label, time = now,
+                success = result != null, detail = connection.value.error.orEmpty()
             )
-            val result = try {
-                app.controller.connect(device, credentials, this@ConnectionViewModel)
-            } finally {
-                pairing.value = null
-            }
-            val now = System.currentTimeMillis()
-            dao.addHistory(
-                HistoryEntry(
-                    name = device.name, protocol = device.protocol.label, time = now,
-                    success = result != null, detail = connection.value.error.orEmpty()
+        )
+        if (result != null) {
+            dao.save(
+                SavedDevice(
+                    device.id, old?.name ?: device.name, device.protocol.name, device.address,
+                    device.manufacturer.ifEmpty { old?.manufacturer.orEmpty() }, result.mac,
+                    KeystoreCrypto.encrypt(result.token), result.certPin, old?.favorite ?: false, now
                 )
             )
-            if (result != null) {
-                dao.save(
-                    SavedDevice(
-                        device.id, old?.name ?: device.name, device.protocol.name, device.address,
-                        device.manufacturer.ifEmpty { old?.manufacturer.orEmpty() }, result.mac,
-                        KeystoreCrypto.encrypt(result.token), result.certPin, old?.favorite ?: false, now
-                    )
-                )
-            }
         }
     }
 
     fun disconnect() {
+        retry?.cancel()
         connecting?.cancel()
         app.controller.disconnect()
     }

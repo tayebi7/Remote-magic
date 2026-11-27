@@ -1,5 +1,7 @@
 package com.remotemagic.app.bluetooth
 
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
@@ -22,7 +24,10 @@ class BluetoothScanner(private val context: Context) {
     val isEnabled: Boolean get() = adapter?.isEnabled == true
 
     private fun BluetoothDevice.toTv() = DiscoveredDevice(
-        name = name ?: address, protocol = Protocol.BLUETOOTH_HID, address = address
+        name = name ?: address, protocol = Protocol.BLUETOOTH_HID, address = address,
+        // The HID remote profile runs on Bluetooth Classic; BLE-only devices are listed as unsupported.
+        supported = type != BluetoothDevice.DEVICE_TYPE_LE,
+        paired = bondState == BluetoothDevice.BOND_BONDED
     )
 
     fun scan(): Flow<DiscoveredDevice> = callbackFlow {
@@ -47,7 +52,14 @@ class BluetoothScanner(private val context: Context) {
         bluetooth.bondedDevices.orEmpty().forEach { trySend(it.toTv()) }
         bluetooth.cancelDiscovery()
         if (!bluetooth.startDiscovery()) channel.close()
+        val le = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, result: ScanResult) {
+                if (result.device.name != null) trySend(result.device.toTv())
+            }
+        }
+        runCatching { bluetooth.bluetoothLeScanner?.startScan(le) }
         awaitClose {
+            runCatching { bluetooth.bluetoothLeScanner?.stopScan(le) }
             bluetooth.cancelDiscovery()
             context.unregisterReceiver(receiver)
         }

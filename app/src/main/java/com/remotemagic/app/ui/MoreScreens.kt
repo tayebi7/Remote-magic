@@ -1,6 +1,9 @@
 package com.remotemagic.app.ui
 
 import android.Manifest
+import android.content.Intent
+import android.provider.Settings as AndroidSettings
+import androidx.compose.ui.platform.LocalContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
@@ -20,7 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.remotemagic.app.R
-import com.remotemagic.app.data.Shortcut
+import com.remotemagic.app.domain.TvApp
 import com.remotemagic.app.domain.ConnectionState
 import com.remotemagic.app.domain.Protocol
 import com.remotemagic.app.remote.RemoteViewModel
@@ -67,51 +70,23 @@ fun VoiceScreen(model: RemoteViewModel) {
 @Composable
 fun AppsScreen(model: RemoteViewModel, connection: ConnectionState) {
     val shortcuts by model.shortcuts.collectAsStateWithLifecycle()
-    var editing by remember { mutableStateOf<Shortcut?>(null) }
     Page {
-        AppGrid { model.open(it) }
-        Text(stringResource(R.string.custom_shortcuts), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.shortcut_note), style = MaterialTheme.typography.bodySmall)
-        shortcuts.forEach { item ->
-            ListItem(
-                modifier = Modifier.clickable { model.open(item) },
-                headlineContent = { Text(item.label) },
-                supportingContent = { Text("${item.protocol} • ${item.target}") },
-                trailingContent = {
-                    Row {
-                        IconButton(onClick = { editing = item }) { Icon(Icons.Filled.Edit, stringResource(R.string.edit)) }
-                        IconButton(onClick = { model.delete(item) }) { Icon(Icons.Filled.Delete, stringResource(R.string.delete)) }
-                    }
-                }
-            )
-        }
+        AppRow { model.open(it) }
         val protocol = connection.device?.protocol
-        // Bluetooth HID cannot launch applications.
-        Button(
-            enabled = protocol != null && protocol != Protocol.BLUETOOTH_HID,
-            onClick = { editing = Shortcut(label = "", target = "", protocol = protocol!!.name) }
-        ) { Text(stringResource(R.string.add)) }
-    }
-    editing?.let { item ->
-        var label by remember(item) { mutableStateOf(item.label) }
-        var target by remember(item) { mutableStateOf(item.target) }
-        AlertDialog(
-            onDismissRequest = { editing = null },
-            title = { Text(stringResource(R.string.custom_shortcuts)) },
-            text = {
-                Column {
-                    OutlinedTextField(label, { label = it }, label = { Text(stringResource(R.string.shortcut_name)) })
-                    OutlinedTextField(target, { target = it }, label = { Text(stringResource(R.string.shortcut_target)) })
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = label.isNotBlank() && target.isNotBlank(), onClick = {
-                    model.save(item.copy(label = label.trim(), target = target.trim()))
-                    editing = null
-                }) { Text(stringResource(R.string.save)) }
-            },
-            dismissButton = { TextButton(onClick = { editing = null }) { Text(stringResource(R.string.cancel)) } }
-        )
+        if (protocol == null || protocol == Protocol.BLUETOOTH_HID) {
+            Text(stringResource(if (protocol == null) R.string.not_connected else R.string.unsupported))
+            return@Page
+        }
+        Text(stringResource(R.string.shortcut_note), style = MaterialTheme.typography.bodySmall)
+        TvApp.entries.forEach { app ->
+            val current = shortcuts.firstOrNull { it.protocol == protocol.name && it.label == app.title }?.target.orEmpty()
+            var target by remember(app, protocol, current) { mutableStateOf(current) }
+            OutlinedTextField(
+                target, { target = it }, Modifier.fillMaxWidth(), singleLine = true,
+                label = { Text("${app.title} – ${stringResource(R.string.shortcut_target)}") }
+            )
+            TextButton(onClick = { model.setAppId(app, protocol, target) }) { Text(stringResource(R.string.save)) }
+        }
     }
 }
 
@@ -144,7 +119,8 @@ fun SettingsScreen(
     model: SettingsViewModel,
     connection: ConnectionViewModel,
     onLanguage: () -> Unit,
-    onTheme: () -> Unit
+    onTheme: () -> Unit,
+    onDevices: () -> Unit
 ) {
     val settings by model.settings.collectAsStateWithLifecycle()
     var confirm by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -159,11 +135,22 @@ fun SettingsScreen(
         Toggle(R.string.vibration, settings.vibrate) { model.setVibrate(it) }
         Toggle(R.string.sounds, settings.sounds) { model.setSounds(it) }
         Toggle(R.string.auto_connect, settings.autoConnect) { model.setAutoConnect(it) }
+        Text(stringResource(R.string.mouse_speed))
+        Slider(settings.mouseSpeed, { model.setMouseSpeed(it) }, valueRange = 0.3f..3f)
+        Toggle(R.string.clear_after_send, settings.clearAfterSend) { model.setClearAfterSend(it) }
+        val context = LocalContext.current
+        OutlinedButton(onClick = onDevices, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices)) }
+        OutlinedButton(
+            onClick = { runCatching { context.startActivity(Intent(AndroidSettings.ACTION_BLUETOOTH_SETTINGS)) } },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(stringResource(R.string.bt_settings)) }
         Text(stringResource(R.string.button_order), style = MaterialTheme.typography.titleMedium)
         settings.order.forEach { section ->
             val title = when (section) {
                 RemoteSection.APPS -> R.string.section_apps
-                RemoteSection.NAVIGATION -> R.string.section_navigation
+                RemoteSection.TOP -> R.string.section_navigation
+                RemoteSection.TOOLS -> R.string.section_tools
+                RemoteSection.VOLUME -> R.string.section_volume
                 RemoteSection.DPAD -> R.string.section_dpad
                 RemoteSection.NUMBERS -> R.string.section_numbers
                 RemoteSection.MEDIA -> R.string.section_media
@@ -189,6 +176,6 @@ fun SettingsScreen(
 
 @Composable
 fun TextScreen(body: Int) = Page {
-    Text("REMOTE MAGIC 1.0.0", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.secondary)
+    Text("REMOTE MAGIC 1.1.0", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.secondary)
     Text(stringResource(body))
 }

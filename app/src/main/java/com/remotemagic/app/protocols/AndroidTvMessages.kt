@@ -47,5 +47,14 @@ object AndroidTvMessages {
     fun pingResponse(value: Long) = ProtoWriter().message(9, ProtoWriter().varint(1, value)).toByteArray()
     fun keyPress(keyCode: Int) =
         ProtoWriter().message(10, ProtoWriter().varint(1, keyCode.toLong()).varint(2, 3)).toByteArray()
+    /** Inserts text into the field the TV announced through its IME counters. */
+    fun imeText(imeCounter: Long, fieldCounter: Long, text: String): ByteArray {
+        val cursor = (text.length - 1).toLong()
+        val status = ProtoWriter().varint(1, cursor).varint(2, cursor).string(3, text)
+        val edit = ProtoWriter().varint(1, 1).message(2, status)
+        val batch = ProtoWriter().varint(1, imeCounter).varint(2, fieldCounter).message(3, edit)
+        return ProtoWriter().message(21, batch).toByteArray()
+    }
+
     fun appLink(link: String) = ProtoWriter().message(90, ProtoWriter().string(1, link)).toByteArray()
 }

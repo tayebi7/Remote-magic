@@ -27,7 +27,7 @@ import com.remotemagic.app.ui.*
 import kotlinx.coroutines.launch
 
 enum class Screen(val route: String, val title: Int) {
-    HOME("home", R.string.home), REMOTE("remote", R.string.remote), DEVICES("devices", R.string.devices),
+    HOME("home", R.string.home), REMOTE("remote", R.string.remote), MOUSE("mouse", R.string.air_mouse), KEYBOARD("keyboard", R.string.keyboard), DEVICES("devices", R.string.devices),
     BLUETOOTH("bluetooth", R.string.bluetooth), WIFI("wifi", R.string.wifi), VOICE("voice", R.string.voice),
     APPS("apps", R.string.apps), FAVORITES("favorites", R.string.favorites), HISTORY("history", R.string.history),
     SETTINGS("settings", R.string.settings), LANGUAGE("language", R.string.language), THEME("theme", R.string.theme),
@@ -102,7 +102,17 @@ fun AppRoot(settingsModel: SettingsViewModel) {
         ) { padding ->
             NavHost(nav, startDestination = Screen.REMOTE.route, modifier = Modifier.padding(padding)) {
                 composable(Screen.HOME.route) { HomeScreen(connectionModel, { go(Screen.REMOTE) }, { go(Screen.WIFI) }) }
-                composable(Screen.REMOTE.route) { RemoteScreen(remoteModel, connection, settings) { go(Screen.WIFI) } }
+                composable(Screen.REMOTE.route) {
+                    RemoteScreen(
+                        remoteModel, connection, settings,
+                        onSearch = { go(Screen.WIFI) }, onMouse = { go(Screen.MOUSE) },
+                        onKeyboard = { go(Screen.KEYBOARD) }, onShowNumbers = { settingsModel.setShowNumbers(it) }
+                    )
+                }
+                composable(Screen.MOUSE.route) {
+                    MouseScreen(remoteModel, connection, settings, { settingsModel.setMouseSpeed(it) }) { go(Screen.REMOTE) }
+                }
+                composable(Screen.KEYBOARD.route) { KeyboardScreen(remoteModel, connection, settings) }
                 composable(Screen.WIFI.route) { ConnectScreen(connectionModel, 0) }
                 composable(Screen.BLUETOOTH.route) { ConnectScreen(connectionModel, 1) }
                 composable(Screen.DEVICES.route) { SavedDevicesScreen(connectionModel, false) }
@@ -111,7 +121,9 @@ fun AppRoot(settingsModel: SettingsViewModel) {
                 composable(Screen.VOICE.route) { VoiceScreen(remoteModel) }
                 composable(Screen.APPS.route) { AppsScreen(remoteModel, connection) }
                 composable(Screen.SETTINGS.route) {
-                    SettingsScreen(settingsModel, connectionModel, { go(Screen.LANGUAGE) }, { go(Screen.THEME) })
+                    SettingsScreen(
+                        settingsModel, connectionModel, { go(Screen.LANGUAGE) }, { go(Screen.THEME) }, { go(Screen.DEVICES) }
+                    )
                 }
                 composable(Screen.LANGUAGE.route) { LanguageScreen() }
                 composable(Screen.THEME.route) { ThemeScreen(settingsModel) }

@@ -98,7 +98,15 @@ fun ConnectScreen(model: ConnectionViewModel, initialTab: Int) {
                         modifier = Modifier.clickable { model.connect(device) },
                         leadingContent = { Icon(if (device.protocol.wifi) Icons.Filled.Tv else Icons.Filled.Bluetooth, null) },
                         headlineContent = { Text(device.name) },
-                        supportingContent = { Text("${device.protocol.label} • ${device.address}") },
+                        supportingContent = {
+                            val state = when {
+                                !device.supported -> " • " + stringResource(R.string.unsupported_short)
+                                device.paired -> " • " + stringResource(R.string.paired)
+                                else -> ""
+                            }
+                            val maker = if (device.manufacturer.isEmpty()) "" else " • ${device.manufacturer}"
+                            Text("${device.protocol.label} • ${device.address}$maker$state")
+                        },
                         trailingContent = { Text(stringResource(R.string.connect), color = MaterialTheme.colorScheme.primary) }
                     )
                 }
